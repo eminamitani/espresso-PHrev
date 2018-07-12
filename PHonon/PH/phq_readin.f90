@@ -67,7 +67,7 @@ SUBROUTINE phq_readin()
   USE freq_ph,       ONLY : fpol, fiu, nfs
   USE cryst_ph,      ONLY : magnetic_sym
   USE ph_restart,    ONLY : ph_readfile
-  USE xml_io_base,   ONLY : create_directory
+  USE io_files,   ONLY : create_directory, check_tempdir
   USE el_phon,       ONLY : elph,elph_mat,elph_simple,elph_nbnd_min, elph_nbnd_max, &
                             el_ph_sigma, el_ph_nsigma, el_ph_ngauss,auxdvscf
   USE dfile_star,    ONLY : drho_star, dvscf_star
