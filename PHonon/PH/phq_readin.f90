@@ -17,6 +17,7 @@ SUBROUTINE phq_readin()
   !
   !
   USE kinds,         ONLY : DP
+  USE parameters,    ONLY : nsx
   USE ions_base,     ONLY : nat, ntyp => nsp
   USE mp,            ONLY : mp_bcast
   USE mp_world,      ONLY : world_comm
@@ -27,7 +28,7 @@ SUBROUTINE phq_readin()
   USE klist,         ONLY : xk, nks, nkstot, lgauss, two_fermi_energies, ltetra
   USE control_flags, ONLY : gamma_only, tqr, restart, lkpoint_dir, io_level, &
                             ts_vdw
-  USE funct,         ONLY : dft_is_meta, dft_is_hybrid
+  USE funct,         ONLY : dft_is_nonlocc, dft_is_hybrid
   USE uspp,          ONLY : okvan
   USE fixed_occ,     ONLY : tfixed_occ
   USE lsda_mod,      ONLY : lsda, nspin
@@ -50,7 +51,7 @@ SUBROUTINE phq_readin()
   USE partial,       ONLY : atomo, nat_todo, nat_todo_input
   USE output,        ONLY : fildyn, fildvscf, fildrho
   USE disp,          ONLY : nq1, nq2, nq3, x_q, wq, nqs, lgamma_iq
-  USE io_files,      ONLY : tmp_dir, prefix, postfix, create_directory, check_tempdir
+  USE io_files,      ONLY : tmp_dir, prefix
   USE noncollin_module, ONLY : i_cons, noncolin
   USE ldaU,          ONLY : lda_plus_u
   USE control_flags, ONLY : iverbosity, modenum, twfcollect
@@ -66,7 +67,8 @@ SUBROUTINE phq_readin()
   USE freq_ph,       ONLY : fpol, fiu, nfs
   USE cryst_ph,      ONLY : magnetic_sym
   USE ph_restart,    ONLY : ph_readfile
-  USE el_phon,       ONLY : elph,elph_mat,elph_simple,elph_epa,elph_nbnd_min, elph_nbnd_max, &
+  USE xml_io_base,   ONLY : create_directory
+  USE el_phon,       ONLY : elph,elph_mat,elph_simple,elph_nbnd_min, elph_nbnd_max, &
                             el_ph_sigma, el_ph_nsigma, el_ph_ngauss,auxdvscf
   USE dfile_star,    ONLY : drho_star, dvscf_star
 
@@ -89,7 +91,7 @@ SUBROUTINE phq_readin()
     ! counter on iterations
     ! counter on atoms
     ! counter on types
-  REAL(DP), ALLOCATABLE :: amass_input(:)
+  REAL(DP) :: amass_input(nsx)
     ! save masses read from input here
   CHARACTER (LEN=256) :: outdir, filename
   CHARACTER (LEN=8)   :: verbosity
@@ -375,29 +377,20 @@ SUBROUTINE phq_readin()
      elph=.true.
      elph_mat=.false.
      elph_simple=.true. 
-     elph_epa=.false.
-  CASE( 'epa' )
-     elph=.true.
-     elph_mat=.false.
-     elph_simple=.false.
-     elph_epa=.true.
   CASE( 'Wannier' )
      elph=.true.
      elph_mat=.true.
      elph_simple=.false.
-     elph_epa=.false.
      auxdvscf=trim(fildvscf)
   CASE( 'interpolated' )
      elph=.true.
      elph_mat=.false.
      elph_simple=.false.
-     elph_epa=.false.
   ! YAMBO >
   CASE( 'yambo' )
      elph=.true.
      elph_mat=.false.
      elph_simple=.false.
-     elph_epa=.false.
      elph_yambo=.true.
      nogg=.true.
      auxdvscf=trim(fildvscf)
@@ -405,7 +398,6 @@ SUBROUTINE phq_readin()
      elph=.false.
      elph_mat=.false.
      elph_simple=.false.
-     elph_epa=.false.
      elph_yambo=.false.
      dvscf_yambo=.true.
      nogg=.true.
@@ -433,7 +425,6 @@ SUBROUTINE phq_readin()
      elph=.false.
      elph_mat=.false.
      elph_simple=.false.
-     elph_epa=.false.
   END SELECT
   ! YAMBO >
   IF (.not.elph_yambo) then
@@ -559,14 +550,13 @@ SUBROUTINE phq_readin()
   !   Here we finished the reading of the input file.
   !   Now allocate space for pwscf variables, read and check them.
   !
-  !   amass will be read again from file:
+  !   amass will also be read from file:
   !   save its content in auxiliary variables
   !
-  ALLOCATE ( amass_input( SIZE(amass) ) )
   amass_input(:)= amass(:)
   !
   tmp_dir_save=tmp_dir
-  tmp_dir_ph= trimcheck( TRIM (tmp_dir) // '_ph' // int_to_char(my_image_id) )
+  tmp_dir_ph= TRIM (tmp_dir) // '_ph' // TRIM(int_to_char(my_image_id)) //'/'
   CALL check_tempdir ( tmp_dir_ph, exst, parallelfs )
   tmp_dir_phq=tmp_dir_ph
 
@@ -594,16 +584,16 @@ SUBROUTINE phq_readin()
 !   we read from there, otherwise use the information in tmp_dir.
 !
      IF (lqdir) THEN
-        tmp_dir_phq= trimcheck ( TRIM(tmp_dir_ph) // TRIM(prefix) // &
-                                & '.q_' // int_to_char(current_iq) )
+        tmp_dir_phq= TRIM (tmp_dir_ph) //TRIM(prefix)//&
+                          & '.q_' // TRIM(int_to_char(current_iq))//'/'
         CALL check_restart_recover(ext_recover, ext_restart)
         IF (.NOT.ext_recover.AND..NOT.ext_restart) tmp_dir_phq=tmp_dir_ph
      ENDIF
      !
 #if defined (__OLDXML)
-     filename=TRIM(tmp_dir_phq)//TRIM(prefix)//postfix//'data-file.xml'
+     filename=TRIM(tmp_dir_phq)//TRIM(prefix)//'.save/data-file.xml'
 #else
-     filename=TRIM(tmp_dir_phq)//TRIM(prefix)//postfix//'data-file-schema.xml'
+     filename=TRIM(tmp_dir_phq)//TRIM(prefix)//'.save/data-file-schema.xml'
 #endif
      IF (ionode) inquire (file =TRIM(filename), exist = exst)
      !
@@ -676,8 +666,8 @@ SUBROUTINE phq_readin()
   IF (ts_vdw) CALL errore('phq_readin',&
      'The phonon code with TS-VdW is not yet available',1)
 
-  IF ( dft_is_meta() ) CALL errore('phq_readin',&
-     'The phonon code with meta-GGA functionals is not yet available',1)
+!  IF ( dft_is_nonlocc() ) CALL errore('phq_readin',&
+!     'The phonon code with non-local vdW functionals is not yet available',1)
 
   IF ( dft_is_hybrid() ) CALL errore('phq_readin',&
      'The phonon code with hybrid functionals is not yet available',1)
@@ -750,7 +740,7 @@ SUBROUTINE phq_readin()
   !  .xml or in the noncollinear case.
   !
   xmldyn=has_xml(fildyn)
-  !IF (noncolin) xmldyn=.TRUE.
+  IF (noncolin) xmldyn=.TRUE.
   !
   ! If a band structure calculation needs to be done do not open a file
   ! for k point
@@ -767,7 +757,6 @@ SUBROUTINE phq_readin()
      IF (amass_input(it) > 0.D0) amass(it) = amass_input(it)
      IF (amass(it) <= 0.D0) CALL errore ('phq_readin', 'Wrong masses', it)
   ENDDO
-  DEALLOCATE (amass_input)
   lgamma_gamma=.FALSE.
   IF (.NOT.ldisp) THEN
      IF (nkstot==1.OR.(nkstot==2.AND.nspin==2)) THEN
@@ -794,8 +783,8 @@ SUBROUTINE phq_readin()
      CALL errore('phq_readin','phonon with arbitrary occupations not tested',1)
   !
   !YAMBO >
-  IF (elph.AND..NOT.(lgauss .or. ltetra).and..NOT.elph_yambo) CALL errore ('phq_readin', 'Electron-&
-       &phonon only for metals', 1)
+  !IF (elph.AND..NOT.(lgauss .or. ltetra).and..NOT.elph_yambo) CALL errore ('phq_readin', 'Electron-&
+  !     &phonon only for metals', 1)
   !YAMBO <
   IF (elph.AND.fildvscf.EQ.' ') CALL errore ('phq_readin', 'El-ph needs &
        &a DeltaVscf file', 1)

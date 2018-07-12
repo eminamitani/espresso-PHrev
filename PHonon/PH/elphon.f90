@@ -489,13 +489,14 @@ SUBROUTINE elphsum ( )
   USE modes,       ONLY : u, nirr
   USE dynmat,      ONLY : dyn, w2
   USE io_global,   ONLY : stdout, ionode, ionode_id
+  USE xml_io_base, ONLY : create_directory
   USE mp_pools,    ONLY : my_pool_id, npool, kunit
   USE mp_images,   ONLY : intra_image_comm
   USE mp,          ONLY : mp_bcast
   USE control_ph,  ONLY : tmp_dir_phq, xmldyn, current_iq
   USE save_ph,     ONLY : tmp_dir_save
-  USE io_files,    ONLY : prefix, tmp_dir, seqopn, create_directory
-  !
+  USE io_files,    ONLY : prefix, tmp_dir, seqopn
+  
   USE lr_symm_base, ONLY : minus_q, nsymq, rtau
   USE qpoint,       ONLY : xq, nksq
   USE control_lr,   ONLY : lgamma
@@ -930,7 +931,233 @@ SUBROUTINE elphsum ( )
   !
   RETURN
 END SUBROUTINE elphsum
-
+!
+!
+!-----------------------------------------------------------------------
+subroutine elphsum2
+  !-----------------------------------------------------------------------
+  !
+  !      Sum over BZ of the electron-phonon matrix elements el_ph_mat
+  !      Original routine written by Francesco Mauri
+  !      Routine to symmetrize and print gkk (C. Verdi and S. Ponce)
+  !
+!#include "f_defs.h"
+  USE ions_base, ONLY : nat, ntyp => nsp, ityp, tau
+  USE cell_base,   ONLY : at, bg
+  use pwcom
+  USE symm_base, ONLY : s, irt, nsym, invs
+  USE kinds, only : DP
+  use klist, only : xk
+  use phcom
+  use el_phon
+  USE lr_symm_base, ONLY : rtau, nsymq, irotmq, minus_q
+  USE io_global, ONLY : stdout
+  USE control_lr, ONLY: lgamma
+  USE qpoint, ONLY : xq
+  !
+  implicit none
+  integer :: n, ik, ikk, ikq, pbnd, ibnd, jbnd, ipert, jpert, nu, mu, vu
+  complex(kind=DP) :: el_ph_sum (3*nat,3*nat)
+  real(kind=DP) :: g2, gamma, w, epc(nbnd,nbnd,3*nat), w_1, w_2, epc_sym(nbnd,nbnd,3*nat)
+  real(kind=DP), parameter :: ryd2ev = 13.6058, ryd2mev = 13605.8, eps = 0.01/ryd2mev
+  !
+  ! now read the eigenvalues and eigenvectors of the dynamical matrix
+  ! (already done in elphon subr)
+  !call readmat (iudyn, ibrav, celldm, nat, ntyp, ityp, omega, amass, tau, xq,
+  !w2, dyn)
+  !
+  write(6,*) 
+  write(6,*) 'We here write only the matrix elements for k=Gamma in the first proc:'
+  write(6,*) 
+  !
+  ! consider only initial state k=0
+  ik = 1
+  WRITE(6,'(a,3f10.6)') 'xk ', (xk(n,ik),n=1,3)
+  write(6,*) ' ibnd  jbnd  imode   eig_i (eV)    eig_j (eV)   omega_nu (meV)    |g| (meV)'
+  !
+  !
+  if (lgamma) then
+     ikk = ik
+     ikq = ik
+  else
+     ikk = 2 * ik - 1
+     ikq = ikk + 1
+  endif
+  !
+  do ibnd = 1, nbnd
+     do jbnd = 1, nbnd
+        !
+        do jpert = 1, 3 * nat
+           do ipert = 1, 3 * nat
+              el_ph_sum (ipert, jpert) = conjg (el_ph_mat (jbnd, ibnd, ik,ipert) ) * &
+                                         el_ph_mat (jbnd, ibnd, ik, jpert)
+           enddo
+        enddo
+        !
+        ! from pert to cart
+        !
+        call symdyn_munu2    (el_ph_sum, u, xq, s, invs, rtau, irt, at, &
+           bg, nsymq, nat, irotmq, minus_q)
+        !
+        do nu = 1, nmodes
+          gamma = 0.0
+          do mu = 1, 3 * nat
+           do vu = 1, 3 * nat
+               gamma = gamma + real (conjg (dyn (mu, nu) ) * el_ph_sum (mu,vu) &
+                 * dyn (vu, nu) )
+           enddo
+          enddo
+          gamma = gamma / 2.d0
+          !
+          ! the factor 2 comes from the factor sqrt(hbar/2/M/omega) that
+          ! appears
+          ! in the definition of the electron-phonon matrix element g
+          ! The sqrt(1/M) factor is actually hidden into the normal modes
+          ! we still need to divide by the phonon frequency in Ry
+          !
+          if (w2(nu).gt.0.d0) then
+            w = sqrt(w2(nu))
+            gamma = gamma / w
+          else
+            w = sqrt(-w2(nu))
+            gamma = 0.d0
+          endif
+          !
+          if (gamma.lt.0.d0) gamma = 0.d0
+          gamma = sqrt(gamma)
+          !
+          ! gamma = |g| [Ry]
+          !
+          epc(ibnd,jbnd,nu) = gamma
+          !
+        enddo
+        !
+     enddo
+  enddo
+  !
+  !  HERE WE "SYMMETRIZE": actually we simply take the averages over
+  !  degenerate states, it is only a convention because g is gauge-dependent!
+  !
+  ! first the phonons 
+  !
+  do ibnd = 1, nbnd
+  do jbnd = 1, nbnd
+    !
+    do nu = 1, nmodes
+      !
+      w_1 = sqrt(abs(w2(nu)))
+      g2 = 0.d0
+      n  = 0
+      !
+      do mu = 1, nmodes
+        !
+        w_2 = sqrt(abs(w2(mu)))
+        !
+        if ( abs(w_2-w_1).lt.eps ) then
+           n = n + 1
+           g2 = g2 + epc(ibnd,jbnd,mu)*epc(ibnd,jbnd,mu)
+        endif
+        !
+      enddo 
+      !
+      g2 = g2 / float(n)
+      epc_sym (ibnd, jbnd, nu) = sqrt (g2)
+      !
+    enddo
+    !
+  enddo
+  enddo
+  epc = epc_sym
+  !
+  ! then the k electrons
+  !
+  do nu   = 1, nmodes
+  do jbnd = 1, nbnd
+    !
+    do ibnd = 1, nbnd
+      !
+      w_1 = et (ibnd, ikk)
+      g2 = 0.d0
+      n  = 0
+      !
+      do pbnd = 1, nbnd
+        !
+        w_2 = et(pbnd, ikk)
+        !
+        if ( abs(w_2-w_1).lt.eps ) then
+           n = n + 1
+           g2 = g2 + epc(pbnd,jbnd,nu)*epc(pbnd,jbnd,nu)
+        endif
+        !
+      enddo 
+      !
+      g2 = g2 / float(n)
+      epc_sym (ibnd, jbnd, nu) = sqrt (g2)
+      !
+    enddo
+    !
+  enddo
+  enddo
+  epc = epc_sym
+  !
+  ! and finally the k+q electrons
+  !
+  do nu   = 1, nmodes
+  do ibnd = 1, nbnd
+    !
+    do jbnd = 1, nbnd
+      !
+      w_1 = et (jbnd, ikq)
+      g2 = 0.d0
+      n  = 0
+      !
+      do pbnd = 1, nbnd
+        !
+        w_2 = et(pbnd, ikq)
+        !
+        if ( abs(w_2-w_1).lt.eps ) then
+           n = n + 1
+           g2 = g2 + epc(ibnd,pbnd,nu)*epc(ibnd,pbnd,nu)
+        endif
+        !
+      enddo 
+      !
+      g2 = g2 / float(n)
+      epc_sym (ibnd, jbnd, nu) = sqrt (g2)
+      !
+    enddo
+    !
+  enddo
+  enddo
+  epc = epc_sym
+  !
+  !if (my_pool_id.eq.0) then
+    !
+    do ibnd = 1, nbnd
+      do jbnd = 1, nbnd
+        do nu = 1, nmodes
+          !
+          if (w2(nu).gt.0.d0) then
+            w = sqrt( w2(nu))
+          else
+            w = sqrt(-w2(nu))
+          endif
+          !
+          write(stdout,'(3i5,4f15.6)') ibnd, jbnd, nu, &
+             ryd2ev * et (ibnd, ikk), ryd2ev * et (jbnd, ikq), &
+             ryd2mev * w, ryd2mev * epc(ibnd,jbnd,nu)
+          !
+        enddo
+      enddo
+    enddo
+    !
+  !endif
+  !
+  !
+  return
+end subroutine elphsum2
+! 
+!
 !-----------------------------------------------------------------------
 SUBROUTINE elphsum_simple
   !-----------------------------------------------------------------------
@@ -1138,300 +1365,6 @@ SUBROUTINE elphsum_simple
      
 
 END SUBROUTINE elphsum_simple
-   
-!-----------------------------------------------------------------------
-SUBROUTINE elphfil_epa(iq)
-  !-----------------------------------------------------------------------
-  !
-  !      EPA (electron-phonon-averaged) approximation
-  !      Writes electron-phonon matrix elements to a file
-  !      Written by Georgy Samsonidze on 2015-01-28
-  !
-  !      Adv. Energy Mater. 2018, 1800246
-  !      doi:10.1002/aenm.201800246
-  !      https://doi.org/10.1002/aenm.201800246
-  !
-  !-----------------------------------------------------------------------
-  USE cell_base, ONLY : ibrav, alat, omega, tpiba, at, bg
-  USE disp, ONLY : nq1, nq2, nq3, nqs, x_q, wq, lgamma_iq
-  USE dynmat, ONLY : dyn, w2
-  USE el_phon, ONLY : el_ph_mat, done_elph
-  USE fft_base, ONLY : dfftp, dffts, dfftb
-  USE gvect, ONLY : ngm_g, ecutrho
-  USE io_global, ONLY : ionode, ionode_id
-  USE ions_base, ONLY : nat, nsp, atm, ityp, tau
-  USE kinds, ONLY : DP
-  USE klist, ONLY : xk, wk, nelec, nks, nkstot, ngk
-  USE lsda_mod, ONLY : nspin, isk
-  USE modes, ONLY : nirr, nmodes, npert, npertx, u, t, tmq, &
-       name_rap_mode, num_rap_mode
-  USE lr_symm_base, ONLY : irgq, nsymq, irotmq, rtau, gi, gimq, &
-       minus_q, invsymq
-  USE mp, ONLY : mp_bcast, mp_sum
-  USE mp_images, ONLY : intra_image_comm
-  USE mp_pools, ONLY : npool, intra_pool_comm
-  USE qpoint, ONLY : nksq, nksqtot, ikks, ikqs, eigqts
-  USE start_k, ONLY : nk1, nk2, nk3, k1, k2, k3
-  USE symm_base, ONLY : s, invs, ftau, nrot, nsym, nsym_ns, &
-       nsym_na, ft, sr, sname, t_rev, irt, time_reversal, &
-       invsym, nofrac, allfrac, nosym, nosym_evc, no_t_rev
-  USE wvfct, ONLY : nbnd, et, wg
-  USE gvecw, ONLY : ecutwfc
-  USE io_files, ONLY : prefix
-
-  IMPLICIT NONE
-
-  INTEGER, INTENT(IN) :: iq
-
-  INTEGER :: iuelph, ios, irr, ii, jj, kk, ll
-  character :: cdate*9, ctime*9, sdate*32, stime*32, &
-       stitle*32, myaccess*10, mystatus*7
-  CHARACTER(LEN=80) :: filelph
-
-  REAL(DP), ALLOCATABLE :: xk_collect(:,:), wk_collect(:)
-  REAL(DP), ALLOCATABLE :: et_collect(:,:), wg_collect(:,:)
-  INTEGER, ALLOCATABLE :: ngk_collect(:)
-  INTEGER, ALLOCATABLE :: ikks_collect(:), ikqs_collect(:)
-  COMPLEX(DP), ALLOCATABLE :: el_ph_mat_collect(:,:,:,:)
-
-  INTEGER, EXTERNAL :: find_free_unit, atomic_number
-
-  filelph = TRIM(prefix) // '.epa.k'
-
-  DO irr = 1, nirr
-     IF (.NOT. done_elph(irr)) RETURN
-  ENDDO
-
-  IF (iq .EQ. 1) THEN
-     myaccess = 'sequential'
-     mystatus = 'replace'
-  ELSE
-     myaccess = 'append'
-     mystatus = 'old'
-  ENDIF
-  IF (ionode) THEN
-     iuelph = find_free_unit()
-     OPEN(unit = iuelph, file = TRIM(filelph), form = 'unformatted', &
-          access = myaccess, status = mystatus, iostat = ios)
-  ELSE
-     iuelph = 0
-  ENDIF
-  CALL mp_bcast(ios, ionode_id, intra_image_comm)
-  CALL errore('elphfil_epa', 'opening file ' // filelph, ABS(ios))
-
-  IF (iq .EQ. 1) THEN
-     CALL date_and_tim(cdate, ctime)
-     WRITE(sdate, '(A2,"-",A3,"-",A4,21X)') cdate(1:2), cdate(3:5), cdate(6:9)
-     WRITE(stime, '(A8,24X)') ctime(1:8)
-     WRITE(stitle, '("EPA-Complex",21X)')
-     CALL cryst_to_cart(nqs, x_q, at, -1)
-     ! write header
-     IF (ionode) THEN
-        WRITE(iuelph) stitle, sdate, stime
-        WRITE(iuelph) ibrav, nat, nsp, nrot, nsym, nsym_ns, nsym_na, &
-             ngm_g, nspin, nbnd, nmodes, nqs
-        WRITE(iuelph) nq1, nq2, nq3, nk1, nk2, nk3, k1, k2, k3
-        WRITE(iuelph) time_reversal, invsym, nofrac, allfrac, nosym, &
-             nosym_evc, no_t_rev
-        WRITE(iuelph) alat, omega, tpiba, nelec, ecutrho, ecutwfc
-        WRITE(iuelph) dfftp%nr1, dfftp%nr2, dfftp%nr3
-        WRITE(iuelph) dffts%nr1, dffts%nr2, dffts%nr3
-        WRITE(iuelph) dfftb%nr1, dfftb%nr2, dfftb%nr3
-        WRITE(iuelph) ((at(ii, jj), ii = 1, 3), jj = 1, 3)
-        WRITE(iuelph) ((bg(ii, jj), ii = 1, 3), jj = 1, 3)
-        WRITE(iuelph) (atomic_number(atm(ii)), ii = 1, nsp)
-        WRITE(iuelph) (ityp(ii), ii = 1, nat)
-        WRITE(iuelph) ((tau(ii, jj), ii = 1, 3), jj = 1, nat)
-        WRITE(iuelph) ((x_q(ii, jj), ii = 1, 3), jj = 1, nqs)
-        WRITE(iuelph) (wq(ii), ii = 1, nqs)
-        WRITE(iuelph) (lgamma_iq(ii), ii = 1, nqs)
-     ENDIF
-     CALL cryst_to_cart(nqs, x_q, bg, 1)
-  ENDIF
-
-  ! collect data for current q-point
-  ALLOCATE(xk_collect(3, nkstot))
-  ALLOCATE(wk_collect(nkstot))
-  ALLOCATE(et_collect(nbnd, nkstot))
-  ALLOCATE(wg_collect(nbnd, nkstot))
-  ALLOCATE(ngk_collect(nkstot))
-  ALLOCATE(ikks_collect(nksqtot))
-  ALLOCATE(ikqs_collect(nksqtot))
-  ALLOCATE(el_ph_mat_collect(nbnd, nbnd, nksqtot, nmodes))
-  IF (npool > 1) THEN
-     CALL poolcollect(3, nks, xk, nkstot, xk_collect)
-     CALL poolcollect(1, nks, wk, nkstot, wk_collect)
-     CALL poolcollect(nbnd, nks, et, nkstot, et_collect)
-     CALL poolcollect(nbnd, nks, wg, nkstot, wg_collect)
-     CALL ipoolcollect(1, nks, ngk, nkstot, ngk_collect)
-     CALL jpoolcollect(1, nksq, ikks, nksqtot, ikks_collect)
-     CALL jpoolcollect(1, nksq, ikqs, nksqtot, ikqs_collect)
-     CALL el_ph_collect(nmodes, el_ph_mat, el_ph_mat_collect, nksqtot, nksq)
-  ELSE
-     xk_collect(1:3, 1:nks) = xk(1:3, 1:nks)
-     wk_collect(1:nks) = wk(1:nks)
-     et_collect(1:nbnd, 1:nks) = et(1:nbnd, 1:nks)
-     wg_collect(1:nbnd, 1:nks) = wg(1:nbnd, 1:nks)
-     ngk_collect(1:nks) = ngk(1:nks)
-     ikks_collect(1:nksq) = ikks(1:nksq)
-     ikqs_collect(1:nksq) = ikqs(1:nksq)
-     el_ph_mat_collect(1:nbnd, 1:nbnd, 1:nksq, 1:nmodes) = &
-          el_ph_mat(1:nbnd, 1:nbnd, 1:nksq, 1:nmodes)
-  ENDIF
-  CALL cryst_to_cart(nkstot, xk_collect, at, -1)
-  ! write data for current q-point
-  IF (ionode) THEN
-     WRITE(iuelph) nsymq, irotmq, nirr, npertx, nkstot, nksqtot
-     WRITE(iuelph) minus_q, invsymq
-     WRITE(iuelph) (irgq(ii), ii = 1, 48)
-     WRITE(iuelph) (npert(ii), ii = 1, nmodes)
-     WRITE(iuelph) (((rtau(ii, jj, kk), ii = 1, 3), jj = 1, 48), &
-          kk = 1, nat)
-     WRITE(iuelph) ((gi(ii, jj), ii = 1, 3), jj = 1, 48)
-     WRITE(iuelph) (gimq(ii), ii = 1, 3)
-     WRITE(iuelph) ((u(ii, jj), ii = 1, nmodes), jj = 1, nmodes)
-     WRITE(iuelph) ((((t(ii, jj, kk, ll), ii = 1, npertx), &
-          jj = 1, npertx), kk = 1, 48), ll = 1, nmodes)
-     WRITE(iuelph) (((tmq(ii, jj, kk), ii = 1, npertx), &
-          jj = 1, npertx), kk = 1, nmodes)
-     WRITE(iuelph) (name_rap_mode(ii), ii = 1, nmodes)
-     WRITE(iuelph) (num_rap_mode(ii), ii = 1, nmodes)
-     WRITE(iuelph) (((s(ii, jj, kk), ii = 1, 3), jj = 1, 3), kk = 1, 48)
-     WRITE(iuelph) (invs(ii), ii = 1, 48)
-     WRITE(iuelph) ((ftau(ii, jj), ii = 1, 3), jj = 1, 48)
-     WRITE(iuelph) ((ft(ii, jj), ii = 1, 3), jj = 1, 48)
-     WRITE(iuelph) (((sr(ii, jj, kk), ii = 1, 3), jj = 1, 3), kk = 1, 48)
-     WRITE(iuelph) (sname(ii), ii = 1, 48)
-     WRITE(iuelph) (t_rev(ii), ii = 1, 48)
-     WRITE(iuelph) ((irt(ii, jj), ii = 1, 48), jj = 1, nat)
-     WRITE(iuelph) ((xk_collect(ii, jj), ii = 1, 3), jj = 1, nkstot)
-     WRITE(iuelph) (wk_collect(ii), ii = 1, nkstot)
-     WRITE(iuelph) ((et_collect(ii, jj), ii = 1, nbnd), jj = 1, nkstot)
-     WRITE(iuelph) ((wg_collect(ii, jj), ii = 1, nbnd), jj = 1, nkstot)
-     WRITE(iuelph) (isk(ii), ii = 1, nkstot)
-     WRITE(iuelph) (ngk_collect(ii), ii = 1, nkstot)
-     WRITE(iuelph) (ikks_collect(ii), ii = 1, nksqtot)
-     WRITE(iuelph) (ikqs_collect(ii), ii = 1, nksqtot)
-     WRITE(iuelph) (eigqts(ii), ii = 1, nat)
-     WRITE(iuelph) (w2(ii), ii = 1, nmodes)
-     WRITE(iuelph) ((dyn(ii, jj), ii = 1, nmodes), jj = 1, nmodes)
-     WRITE(iuelph) ((((el_ph_mat_collect(ii, jj, kk, ll), ii = 1, nbnd), &
-          jj = 1, nbnd), kk = 1, nksqtot), ll = 1, nmodes)
-     CLOSE (unit = iuelph, status = 'keep')
-  ENDIF
-  CALL cryst_to_cart(nkstot, xk_collect, bg, 1)
-  DEALLOCATE(xk_collect)
-  DEALLOCATE(wk_collect)
-  DEALLOCATE(et_collect)
-  DEALLOCATE(wg_collect)
-  DEALLOCATE(ngk_collect)
-  DEALLOCATE(ikks_collect)
-  DEALLOCATE(ikqs_collect)
-  DEALLOCATE(el_ph_mat_collect)
-
-  RETURN
-
-END SUBROUTINE elphfil_epa
-   
-!----------------------------------------------------------------------------
-SUBROUTINE ipoolcollect( length, nks, f_in, nkstot, f_out )
-  !----------------------------------------------------------------------------
-  !
-  ! ... as poolcollect, for an integer vector
-  !
-  USE mp_pools,  ONLY : my_pool_id, npool, kunit, &
-                        inter_pool_comm, intra_pool_comm
-  USE mp,        ONLY : mp_sum
-  !
-  IMPLICIT NONE
-  !
-  INTEGER, INTENT(IN) :: length, nks, nkstot
-  ! first dimension of arrays
-  ! number of k-points per pool
-  ! total number of k-points
-  INTEGER, INTENT(IN)  :: f_in (length,nks)
-  ! pool-distributed function
-  INTEGER, INTENT(OUT) :: f_out(length,nkstot)
-  ! pool-collected function
-  !
-  INTEGER :: nbase, rest, nks1
-  !
-  nks1    = kunit * ( nkstot / kunit / npool )
-  !
-  rest = ( nkstot - nks1 * npool ) / kunit
-  !
-  IF ( ( my_pool_id + 1 ) <= rest ) nks1 = nks1 + kunit
-  !
-  IF (nks1.ne.nks) &
-     call errore('ipoolcollect','inconsistent number of k-points',1)
-  !
-  ! ... calculates nbase = the position in the list of the first point that
-  ! ...                    belong to this npool - 1
-  !
-  nbase = nks * my_pool_id
-  !
-  IF ( ( my_pool_id + 1 ) > rest ) nbase = nbase + rest * kunit
-  !
-  ! copy the original points in the correct position of the list
-  !
-  f_out=0
-  f_out(:,nbase+1:nbase+nks) = f_in(:,1:nks)
-  !
-  CALL mp_sum( f_out, inter_pool_comm )
-  !
-  RETURN
-  !
-END SUBROUTINE ipoolcollect
-
-!----------------------------------------------------------------------------
-SUBROUTINE jpoolcollect( length, nks, f_in, nkstot, f_out )
-  !----------------------------------------------------------------------------
-  !
-  ! ... as ipoolcollect, without kunit and with an index shift
-  !
-  USE mp_pools,  ONLY : my_pool_id, npool, kunit, &
-                        inter_pool_comm, intra_pool_comm
-  USE mp,        ONLY : mp_sum
-  !
-  IMPLICIT NONE
-  !
-  INTEGER, INTENT(IN) :: length, nks, nkstot
-  ! first dimension of arrays
-  ! number of k-points per pool
-  ! total number of k-points
-  INTEGER, INTENT(IN)  :: f_in (length,nks)
-  ! pool-distributed function
-  INTEGER, INTENT(OUT) :: f_out(length,nkstot)
-  ! pool-collected function
-  !
-  INTEGER :: nbase, rest, nks1
-  !
-  nks1    = ( nkstot / npool )
-  !
-  rest = ( nkstot - nks1 * npool )
-  !
-  IF ( ( my_pool_id + 1 ) <= rest ) nks1 = nks1 + 1
-  !
-  IF (nks1.ne.nks) &
-     call errore('jpoolcollect','inconsistent number of k-points',1)
-  !
-  ! ... calculates nbase = the position in the list of the first point that
-  ! ...                    belong to this npool - 1
-  !
-  nbase = nks * my_pool_id
-  !
-  IF ( ( my_pool_id + 1 ) > rest ) nbase = nbase + rest
-  !
-  ! copy the original points in the correct position of the list
-  !
-  f_out=0
-  f_out(:,nbase+1:nbase+nks) = f_in(:,1:nks) + nbase * kunit
-  !
-  CALL mp_sum( f_out, inter_pool_comm )
-  !
-  RETURN
-  !
-END SUBROUTINE jpoolcollect
    
 !-----------------------------------------------------------------------
 FUNCTION dos_ef (ngauss, degauss, ef, et, wk, nks, nbnd)
