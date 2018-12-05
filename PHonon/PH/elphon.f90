@@ -947,7 +947,7 @@ subroutine elphsum2
   use pwcom
   USE symm_base, ONLY : s, irt, nsym, invs
   USE kinds, only : DP
-  use klist, only : xk
+  use klist, only : xk, nks, nkstot
   use phcom
   use el_phon
   USE lr_symm_base, ONLY : rtau, nsymq, irotmq, minus_q
@@ -956,6 +956,7 @@ subroutine elphsum2
   USE qpoint, ONLY : xq
   !
   implicit none
+  integer :: i
   integer :: n, ik, ikk, ikq, pbnd, ibnd, jbnd, ipert, jpert, nu, mu, vu
   complex(kind=DP) :: el_ph_sum (3*nat,3*nat)
   real(kind=DP) :: g2, gamma, w, epc(nbnd,nbnd,3*nat), w_1, w_2, epc_sym(nbnd,nbnd,3*nat)
@@ -967,11 +968,21 @@ subroutine elphsum2
   !w2, dyn)
   !
   write(6,*) 
-  write(6,*) 'We here write only the matrix elements for k=Gamma in the first proc:'
+  write(6,*) 'We here write the matrix elements for all kpoints'
+  write(6,*) 'huge output! use with caution!'
   write(6,*) 
+
+ !nkstot becomes total number of k-point when -npool=1
+  write(6,*) 'number of total irreducible total k-points:', nkstot
+  write(6,*)  'k-points information:'
+  do i=1, nkstot
+    WRITE(6,'(a,3f10.6)') 'xk ', (xk(n,i),n=1,3)
+  end do
+
+  write(6,*) 'electron-phonon matrix element'
   !
   ! consider only initial state k=0
-  ik = 1
+  do ik=1, nkstot
   WRITE(6,'(a,3f10.6)') 'xk ', (xk(n,ik),n=1,3)
   write(6,*) ' ibnd  jbnd  imode   eig_i (eV)    eig_j (eV)   omega_nu (meV)    |g| (meV)'
   !
@@ -1150,6 +1161,8 @@ subroutine elphsum2
         enddo
       enddo
     enddo
+
+   enddo !k
     !
   !endif
   !
