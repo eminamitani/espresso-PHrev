@@ -980,14 +980,15 @@ subroutine elphsum2
     WRITE(6,'(a,3f10.6)') 'xk ', (xk(n,i),n=1,3)
   end do
 
-  write(6,*) 'electron-phonon matrix element'
+  write(6,*) 'electron-phonon matrix element dump to file elphmat.dat'
   !
   !
+  WRITE(iuelphmat,'(a,3f10.6)') 'xq ', (xq(n),n=1,3)
   if(elphout_all) then
 
   do ik=1, nkstot
-  WRITE(6,'(a,3f10.6)') 'xk ', (xk(n,ik),n=1,3)
-  write(6,*) ' ibnd  jbnd  imode   eig_i (eV)    eig_j (eV)   omega_nu (meV)    |g| (meV)'
+  WRITE(iuelphmat,'(a,3f10.6)') 'xk ', (xk(n,ik),n=1,3)
+  write(iuelphmat,*) ' ibnd  jbnd  imode   eig_i (eV)    eig_j (eV)   omega_nu (meV)    |g| (meV)'
   !
   !
   if (lgamma) then
@@ -1157,7 +1158,7 @@ subroutine elphsum2
             w = sqrt(-w2(nu))
           endif
           !
-          write(stdout,'(3i5,4f15.6)') ibnd, jbnd, nu, &
+          write(iuelphmat,'(3i5,4f15.6)') ibnd, jbnd, nu, &
              ryd2ev * et (ibnd, ikk), ryd2ev * et (jbnd, ikq), &
              ryd2mev * w, ryd2mev * epc(ibnd,jbnd,nu)
           !
@@ -1170,8 +1171,8 @@ subroutine elphsum2
   !not all k, just output select one k-point
   else
   ik=elphout_k
-  WRITE(6,'(a,3f10.6)') 'xk ', (xk(n,ik),n=1,3)
-  write(6,*) ' ibnd  jbnd  imode   eig_i (eV)    eig_j (eV)   omega_nu (meV)    |g| (meV)'
+  WRITE(iuelphmat,'(a,3f10.6)') 'xk ', (xk(n,ik),n=1,3)
+  write(iuelphmat,*) ' ibnd  jbnd  imode   eig_i (eV)    eig_j (eV)   omega_nu (meV)    |g| (meV)'
   !
   !
   if (lgamma) then
@@ -1341,7 +1342,7 @@ subroutine elphsum2
             w = sqrt(-w2(nu))
           endif
           !
-          write(stdout,'(3i5,4f15.6)') ibnd, jbnd, nu, &
+          write(iuelphmat,'(3i5,4f15.6)') ibnd, jbnd, nu, &
              ryd2ev * et (ibnd, ikk), ryd2ev * et (jbnd, ikq), &
              ryd2mev * w, ryd2mev * epc(ibnd,jbnd,nu)
           !

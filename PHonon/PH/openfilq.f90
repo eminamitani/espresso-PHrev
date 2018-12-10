@@ -17,7 +17,7 @@ SUBROUTINE openfilq()
   USE units_ph,        ONLY : iuwfc, iudwf, iubar, iucom, iudvkb3, &
                               iudrhous, iuebar, iudrho, iudyn, iudvscf, &
                               lrwfc, lrdwf, lrbar, lrcom, lrdvkb3, &
-                              lrdrhous, lrebar, lrdrho, lint3paw, iuint3paw
+                              lrdrhous, lrebar, lrdrho, lint3paw, iuint3paw, iuelphmat
   USE io_files,        ONLY : tmp_dir, diropn, seqopn
   USE control_ph,      ONLY : epsil, zue, ext_recover, trans, &
                               tmp_dir_phq, start_irr, last_irr, xmldyn, &
@@ -47,6 +47,7 @@ SUBROUTINE openfilq()
 
   USE qpoint,          ONLY : xq
   USE control_lr,      ONLY : lgamma
+  use el_phon,         ONLY: elphout_all, elphout_k
   !
   IMPLICIT NONE
   !
@@ -231,6 +232,13 @@ SUBROUTINE openfilq()
      iuba2 = 33
      lrba2 = 2 * nbnd * npwx * npol
      CALL diropn(iuba2, 'ba2', lrba2, exst)
+  ENDIF
+
+  IF(elph) THEN
+  IF(elphout_all .OR. elphout_k .gt. 0) THEN
+  iuelphmat =340
+  OPEN (unit=iuelphmat, file='elphmat.dat', status='unknown', err=100, iostat=ios)
+  ENDIF
   ENDIF
 
   RETURN
