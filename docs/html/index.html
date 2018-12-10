@@ -1,0 +1,158 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>How to output the electron-phonon matrix element using this extension &#8212; EPCoutput  documentation</title>
+    <link rel="stylesheet" href="_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    <script type="text/javascript" id="documentation_options" data-url_root="./" src="_static/documentation_options.js"></script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <div class="section" id="how-to-output-the-electron-phonon-matrix-element-using-this-extension">
+<h1>How to output the electron-phonon matrix element using this extension<a class="headerlink" href="#how-to-output-the-electron-phonon-matrix-element-using-this-extension" title="Permalink to this headline">¶</a></h1>
+<div class="toctree-wrapper compound">
+</div>
+<p>This version of Quantum-Espresso includes small extension to output
+the electron-phonon matrix element into the file named “elphmat.dat”.</p>
+<dl class="docutils">
+<dt>The most of codes in this version inherits the sample code provided at</dt>
+<dd><a class="reference external" href="http://epw.org.uk/Documentation/School2018">http://epw.org.uk/Documentation/School2018</a>
+Hands-on 2: Electron-phonon coupling in QE –&gt; Tues.5.tar and Extra</dd>
+</dl>
+<p>The above version of code only output the electron-phonon matrix element at Gamma point (for k) to standard output.
+Thus, I modify several part in PHonon package in Quantum-Espresso to output the matrix element on electron k-point
+or specific single k-point.</p>
+</div>
+<div class="section" id="usage">
+<h1>usage<a class="headerlink" href="#usage" title="Permalink to this headline">¶</a></h1>
+<p>If you want to output the matrix element at all k-points (for electron)
+using the following tags in the input for ph.x</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">electron_phonon</span> <span class="o">=</span><span class="s1">&#39;simple&#39;</span>
+<span class="n">elphout_all</span> <span class="o">=.</span><span class="n">true</span><span class="o">.</span>
+</pre></div>
+</div>
+<p>If you want the matrix element on specific k-point
+using the following tags in the input for ph.x</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">electron_phonon</span> <span class="o">=</span><span class="s1">&#39;simple&#39;</span>
+<span class="n">elphout_all</span> <span class="o">=.</span><span class="n">false</span><span class="o">.</span>
+<span class="n">elphout_k</span> <span class="o">=</span> <span class="mi">4</span>
+</pre></div>
+</div>
+<p>The integer index of elphout_k corresponds to the index of irreducible k-points in ph.x calculation.
+To help setting this tag, I also output the coordinates of the irreducible k-points in the standard output
+as the followings</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">number</span> <span class="n">of</span> <span class="n">total</span> <span class="n">irreducible</span> <span class="n">total</span> <span class="n">k</span><span class="o">-</span><span class="n">points</span><span class="p">:</span>          <span class="mi">19</span>
+<span class="n">k</span><span class="o">-</span><span class="n">points</span> <span class="n">information</span><span class="p">:</span>
+<span class="n">xk</span>   <span class="mf">0.000000</span>  <span class="mf">0.000000</span>  <span class="mf">0.000000</span>
+<span class="n">xk</span>   <span class="mf">0.000000</span>  <span class="mf">0.096225</span>  <span class="mf">0.000000</span>
+<span class="n">xk</span>   <span class="mf">0.000000</span>  <span class="mf">0.192450</span>  <span class="mf">0.000000</span>
+<span class="n">xk</span>   <span class="mf">0.000000</span>  <span class="mf">0.288675</span>  <span class="mf">0.000000</span>
+</pre></div>
+</div>
+</div>
+<div class="section" id="attention">
+<h1>attention<a class="headerlink" href="#attention" title="Permalink to this headline">¶</a></h1>
+<p>In order to gather all k-point information, -npool option should be 1 when running ph.x.
+For example</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">ph</span><span class="o">.</span><span class="n">x</span> <span class="o">-</span><span class="n">npool</span> <span class="mi">1</span> <span class="o">&lt;</span> <span class="n">graphene</span><span class="o">.</span><span class="n">phonon</span><span class="o">.</span><span class="ow">in</span> <span class="o">&gt;</span> <span class="n">phonon</span><span class="o">.</span><span class="n">out</span>
+</pre></div>
+</div>
+</div>
+<div class="section" id="indices-and-tables">
+<h1>Indices and tables<a class="headerlink" href="#indices-and-tables" title="Permalink to this headline">¶</a></h1>
+<ul class="simple">
+<li><a class="reference internal" href="genindex.html"><span class="std std-ref">Index</span></a></li>
+<li><a class="reference internal" href="py-modindex.html"><span class="std std-ref">Module Index</span></a></li>
+<li><a class="reference internal" href="search.html"><span class="std std-ref">Search Page</span></a></li>
+</ul>
+</div>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="#">EPCoutput</a></h1>
+
+
+
+
+
+
+
+
+<h3>Navigation</h3>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="#">Documentation overview</a><ul>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    </div>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2018, Emi Minamitani.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 1.8.2</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
+      
+      |
+      <a href="_sources/index.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>
