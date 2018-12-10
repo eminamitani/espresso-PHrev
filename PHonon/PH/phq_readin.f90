@@ -69,7 +69,7 @@ SUBROUTINE phq_readin()
   USE ph_restart,    ONLY : ph_readfile
   USE io_files,   ONLY : create_directory, check_tempdir
   USE el_phon,       ONLY : elph,elph_mat,elph_simple,elph_nbnd_min, elph_nbnd_max, &
-                            el_ph_sigma, el_ph_nsigma, el_ph_ngauss,auxdvscf
+                            el_ph_sigma, el_ph_nsigma, el_ph_ngauss,auxdvscf, elphout_all, elphout_k
   USE dfile_star,    ONLY : drho_star, dvscf_star
 
   USE qpoint,        ONLY : nksq, xq
@@ -123,7 +123,7 @@ SUBROUTINE phq_readin()
                        elph_nbnd_min, elph_nbnd_max, el_ph_ngauss, &
                        el_ph_nsigma, el_ph_sigma,  electron_phonon, &
                        q_in_band_form, q2d, qplot, low_directory_check, &
-                       lshift_q
+                       lshift_q,elphout_all, elphout_k
 
   ! tr2_ph       : convergence threshold
   ! amass        : atomic masses
@@ -185,6 +185,8 @@ SUBROUTINE phq_readin()
   ! qplot, : if true a list of q points is given in input
   ! q_in_band_form: if true the input list of q points defines paths 
   ! q2d, : if .true. the q list define a mesh in a square.
+  ! elphout_all: output all the matrix element on the file (huge output)
+  ! elphout_k: if elphout_all =.false. select the k-point to output the epc matrix element
   ! low_directory_check : if .true. only the requested representations
   !                       are searched on file
   ! 
@@ -246,6 +248,8 @@ SUBROUTINE phq_readin()
   el_ph_sigma = 0.02
   el_ph_nsigma = 30
   el_ph_ngauss = 1
+  elphout_all = .false.
+  elphout_k = .true.
   lraman       = .FALSE.
   elop         = .FALSE.
   max_seconds  =  1.E+7_DP

@@ -36,7 +36,8 @@ subroutine bcast_ph_input ( )
   USE ions_base,     ONLY : amass
   USE io_global,   ONLY : meta_ionode_id
   USE run_info,   ONLY : title
-  USE el_phon,    ONLY : elph_nbnd_min,elph_nbnd_max,el_ph_ngauss, el_ph_nsigma, el_ph_sigma
+  USE el_phon,    ONLY : elph_nbnd_min,elph_nbnd_max,el_ph_ngauss, el_ph_nsigma, el_ph_sigma, &
+                         elphout_all, elphout_k
   USE dfile_star, ONLY : drho_star, dvscf_star
   ! YAMBO >
   USE YAMBO,      ONLY : elph_yambo,dvscf_yambo
@@ -67,6 +68,7 @@ subroutine bcast_ph_input ( )
   call mp_bcast (only_wfc, meta_ionode_id, world_comm )
   call mp_bcast (only_init, meta_ionode_id, world_comm )
   call mp_bcast (search_sym, meta_ionode_id, world_comm)
+  call mp_bcast (elphout_all,meta_ionode_id, world_comm)
   ! YAMBO >
   call mp_bcast (elph_yambo, meta_ionode_id, world_comm)
   call mp_bcast (dvscf_yambo, meta_ionode_id, world_comm)
@@ -98,6 +100,7 @@ subroutine bcast_ph_input ( )
   CALL mp_bcast( elph_nbnd_max, meta_ionode_id, world_comm )
   CALL mp_bcast( el_ph_ngauss, meta_ionode_id, world_comm )
   CALL mp_bcast( el_ph_nsigma, meta_ionode_id, world_comm )
+  call mp_bcast( elphout_k,meta_ionode_id, world_comm)
   !
   ! real*8
   !
