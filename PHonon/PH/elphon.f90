@@ -288,7 +288,8 @@ SUBROUTINE elphel (irr, npe, imode0, dvscfins)
   USE buffers, ONLY : get_buffer
   USE uspp, ONLY : vkb
   USE el_phon, ONLY : el_ph_mat, el_ph_mat_rec, el_ph_mat_rec_col, &
-                      comp_elph, done_elph, elph_nbnd_min, elph_nbnd_max
+                      comp_elph, done_elph, elph_nbnd_min, elph_nbnd_max, &
+                      elphout_all, elphout_k
   USE modes, ONLY : u
   USE units_ph, ONLY : iubar, lrbar, lrwfc, iuwfc
   USE control_ph, ONLY : trans, current_iq
@@ -485,7 +486,7 @@ SUBROUTINE elphsum ( )
   USE wvfct,       ONLY: nbnd, et
   USE parameters,  ONLY : npk
   USE el_phon,     ONLY : el_ph_mat, done_elph, el_ph_nsigma, el_ph_ngauss, &
-                          el_ph_sigma
+                          el_ph_sigma, elphout_all, elphout_k
   USE modes,       ONLY : u, nirr
   USE dynmat,      ONLY : dyn, w2
   USE io_global,   ONLY : stdout, ionode, ionode_id
@@ -981,7 +982,9 @@ subroutine elphsum2
 
   write(6,*) 'electron-phonon matrix element'
   !
-  ! consider only initial state k=0
+  !
+  if(elphout_all) then
+
   do ik=1, nkstot
   WRITE(6,'(a,3f10.6)') 'xk ', (xk(n,ik),n=1,3)
   write(6,*) ' ibnd  jbnd  imode   eig_i (eV)    eig_j (eV)   omega_nu (meV)    |g| (meV)'
@@ -1163,6 +1166,192 @@ subroutine elphsum2
     enddo
 
    enddo !k
+
+  !not all k, just output select one k-point
+  else
+  ik=elphout_k
+  WRITE(6,'(a,3f10.6)') 'xk ', (xk(n,ik),n=1,3)
+  write(6,*) ' ibnd  jbnd  imode   eig_i (eV)    eig_j (eV)   omega_nu (meV)    |g| (meV)'
+  !
+  !
+  if (lgamma) then
+     ikk = ik
+     ikq = ik
+  else
+     ikk = 2 * ik - 1
+     ikq = ikk + 1
+  endif
+  !
+  do ibnd = 1, nbnd
+     do jbnd = 1, nbnd
+        !
+        do jpert = 1, 3 * nat
+           do ipert = 1, 3 * nat
+              el_ph_sum (ipert, jpert) = conjg (el_ph_mat (jbnd, ibnd, ik,ipert) ) * &
+                                         el_ph_mat (jbnd, ibnd, ik, jpert)
+           enddo
+        enddo
+        !
+        ! from pert to cart
+        !
+        call symdyn_munu2    (el_ph_sum, u, xq, s, invs, rtau, irt, at, &
+           bg, nsymq, nat, irotmq, minus_q)
+        !
+        do nu = 1, nmodes
+          gamma = 0.0
+          do mu = 1, 3 * nat
+           do vu = 1, 3 * nat
+               gamma = gamma + real (conjg (dyn (mu, nu) ) * el_ph_sum (mu,vu) &
+                 * dyn (vu, nu) )
+           enddo
+          enddo
+          gamma = gamma / 2.d0
+          !
+          ! the factor 2 comes from the factor sqrt(hbar/2/M/omega) that
+          ! appears
+          ! in the definition of the electron-phonon matrix element g
+          ! The sqrt(1/M) factor is actually hidden into the normal modes
+          ! we still need to divide by the phonon frequency in Ry
+          !
+          if (w2(nu).gt.0.d0) then
+            w = sqrt(w2(nu))
+            gamma = gamma / w
+          else
+            w = sqrt(-w2(nu))
+            gamma = 0.d0
+          endif
+          !
+          if (gamma.lt.0.d0) gamma = 0.d0
+          gamma = sqrt(gamma)
+          !
+          ! gamma = |g| [Ry]
+          !
+          epc(ibnd,jbnd,nu) = gamma
+          !
+        enddo
+        !
+     enddo
+  enddo
+  !
+  !  HERE WE "SYMMETRIZE": actually we simply take the averages over
+  !  degenerate states, it is only a convention because g is gauge-dependent!
+  !
+  ! first the phonons
+  !
+  do ibnd = 1, nbnd
+  do jbnd = 1, nbnd
+    !
+    do nu = 1, nmodes
+      !
+      w_1 = sqrt(abs(w2(nu)))
+      g2 = 0.d0
+      n  = 0
+      !
+      do mu = 1, nmodes
+        !
+        w_2 = sqrt(abs(w2(mu)))
+        !
+        if ( abs(w_2-w_1).lt.eps ) then
+           n = n + 1
+           g2 = g2 + epc(ibnd,jbnd,mu)*epc(ibnd,jbnd,mu)
+        endif
+        !
+      enddo
+      !
+      g2 = g2 / float(n)
+      epc_sym (ibnd, jbnd, nu) = sqrt (g2)
+      !
+    enddo
+    !
+  enddo
+  enddo
+  epc = epc_sym
+  !
+  ! then the k electrons
+  !
+  do nu   = 1, nmodes
+  do jbnd = 1, nbnd
+    !
+    do ibnd = 1, nbnd
+      !
+      w_1 = et (ibnd, ikk)
+      g2 = 0.d0
+      n  = 0
+      !
+      do pbnd = 1, nbnd
+        !
+        w_2 = et(pbnd, ikk)
+        !
+        if ( abs(w_2-w_1).lt.eps ) then
+           n = n + 1
+           g2 = g2 + epc(pbnd,jbnd,nu)*epc(pbnd,jbnd,nu)
+        endif
+        !
+      enddo
+      !
+      g2 = g2 / float(n)
+      epc_sym (ibnd, jbnd, nu) = sqrt (g2)
+      !
+    enddo
+    !
+  enddo
+  enddo
+  epc = epc_sym
+  !
+  ! and finally the k+q electrons
+  !
+  do nu   = 1, nmodes
+  do ibnd = 1, nbnd
+    !
+    do jbnd = 1, nbnd
+      !
+      w_1 = et (jbnd, ikq)
+      g2 = 0.d0
+      n  = 0
+      !
+      do pbnd = 1, nbnd
+        !
+        w_2 = et(pbnd, ikq)
+        !
+        if ( abs(w_2-w_1).lt.eps ) then
+           n = n + 1
+           g2 = g2 + epc(ibnd,pbnd,nu)*epc(ibnd,pbnd,nu)
+        endif
+        !
+      enddo
+      !
+      g2 = g2 / float(n)
+      epc_sym (ibnd, jbnd, nu) = sqrt (g2)
+      !
+    enddo
+    !
+  enddo
+  enddo
+  epc = epc_sym
+  !
+  !if (my_pool_id.eq.0) then
+    !
+    do ibnd = 1, nbnd
+      do jbnd = 1, nbnd
+        do nu = 1, nmodes
+          !
+          if (w2(nu).gt.0.d0) then
+            w = sqrt( w2(nu))
+          else
+            w = sqrt(-w2(nu))
+          endif
+          !
+          write(stdout,'(3i5,4f15.6)') ibnd, jbnd, nu, &
+             ryd2ev * et (ibnd, ikk), ryd2ev * et (jbnd, ikq), &
+             ryd2mev * w, ryd2mev * epc(ibnd,jbnd,nu)
+          !
+        enddo
+      enddo
+    enddo
+
+
+
+   end if !all_k or not
     !
   !endif
   !
