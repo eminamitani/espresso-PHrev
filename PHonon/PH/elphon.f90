@@ -959,6 +959,7 @@ subroutine elphsum2
   implicit none
   integer :: i
   integer :: n, ik, ikk, ikq, pbnd, ibnd, jbnd, ipert, jpert, nu, mu, vu
+  integer :: ktotal
   complex(kind=DP) :: el_ph_sum (3*nat,3*nat)
   real(kind=DP) :: g2, gamma, w, epc(nbnd,nbnd,3*nat), w_1, w_2, epc_sym(nbnd,nbnd,3*nat)
   real(kind=DP), parameter :: ryd2ev = 13.6058, ryd2mev = 13605.8, eps = 0.01/ryd2mev
@@ -968,10 +969,12 @@ subroutine elphsum2
   !call readmat (iudyn, ibrav, celldm, nat, ntyp, ityp, omega, amass, tau, xq,
   !w2, dyn)
   !
+  if(elphout_all) then
   write(6,*) 
-  write(6,*) 'We here write the matrix elements for all kpoints'
+  write(6,*) 'We dump the matrix elements for all k-points'
   write(6,*) 'huge output! use with caution!'
   write(6,*) 
+  end if
 
  !nkstot becomes total number of k-point when -npool=1
   write(6,*) 'number of total irreducible total k-points:', nkstot
@@ -979,16 +982,20 @@ subroutine elphsum2
   do i=1, nkstot
     WRITE(6,'(a,3f10.6)') 'xk ', (xk(n,i),n=1,3)
   end do
-
+  write(6,*) 'Caution:except for q=Gamma point, the avobe k-point consist of the pairs connected by q'
   write(6,*) 'electron-phonon matrix element dump to file elphmat.dat'
   !
   !
   WRITE(iuelphmat,'(a,3f10.6)') 'xq ', (xq(n),n=1,3)
   if(elphout_all) then
 
-  do ik=1, nkstot
-  WRITE(iuelphmat,'(a,3f10.6)') 'xk ', (xk(n,ik),n=1,3)
-  write(iuelphmat,*) ' ibnd  jbnd  imode   eig_i (eV)    eig_j (eV)   omega_nu (meV)    |g| (meV)'
+  if (lgamma) then
+    ktotal=nkstot
+  else
+    ktotal=nkstot/2
+  end if
+
+  do ik=1, ktotal
   !
   !
   if (lgamma) then
@@ -998,6 +1005,10 @@ subroutine elphsum2
      ikk = 2 * ik - 1
      ikq = ikk + 1
   endif
+
+  WRITE(iuelphmat,'(a,3f10.6)') 'xk ', (xk(n,ikk),n=1,3)
+  write(iuelphmat,*) ' ibnd  jbnd  imode   eig_i (eV)    eig_j (eV)   omega_nu (meV)    |g| (meV)'
+
   !
   do ibnd = 1, nbnd
      do jbnd = 1, nbnd
