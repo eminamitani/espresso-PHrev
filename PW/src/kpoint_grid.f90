@@ -13,6 +13,7 @@ SUBROUTINE kpoint_grid ( nrot, time_reversal, skip_equivalence, s, t_rev, &
 !  Automatic generation of a uniform grid of k-points
 !
   USE kinds, ONLY: DP
+  USE io_global,        ONLY : ionode, ionode_id
   IMPLICIT NONE
   !
   INTEGER, INTENT(in):: nrot, npk, k1, k2, k3, nk1, nk2, nk3, &
@@ -30,6 +31,7 @@ SUBROUTINE kpoint_grid ( nrot, time_reversal, skip_equivalence, s, t_rev, &
   INTEGER :: nkr, i,j,k, ns, n, nk
   INTEGER, ALLOCATABLE :: equiv(:)
   LOGICAL :: in_the_list
+
   !
   nkr=nk1*nk2*nk3
   ALLOCATE (xkg( 3,nkr),wkk(nkr))
@@ -117,6 +119,19 @@ SUBROUTINE kpoint_grid ( nrot, time_reversal, skip_equivalence, s, t_rev, &
       ENDIF
     ENDDO
   ENDIF
+
+  ! for interpolate electron-phonon matrix element, I need the entire list of k-points and
+  ! its equivalent opint
+  ! simply output on standard output
+
+  IF ( ionode ) THEN
+    write(*,*) "k-index, kx, ky, kz, equivalent k-index"
+    DO nk=1,nkr
+        ! bring back into the 1st BZ
+        write(*,'(i5,3(F10.6), i5)'), nk, xkg(1,nk)-nint(xkg(1,nk)), xkg(2,nk)-nint(xkg(2,nk)), xkg(3,nk)-nint(xkg(3,nk)), equiv(nk)
+    END DO
+
+  end if
 
   !  count irreducible points and order them
 
