@@ -125,7 +125,7 @@ SUBROUTINE kpoint_grid ( nrot, time_reversal, skip_equivalence, s, t_rev, &
   ! simply output on standard output
 
   IF ( ionode ) THEN
-    write(*,*) "k-index, kx, ky, kz, equivalent k-index"
+    write(*,*) "original-index, x, y, z, equivalent k-index"
     DO nk=1,nkr
         ! bring back into the 1st BZ
         write(*,'(i5,3(F10.6), i5)'), nk, xkg(1,nk)-nint(xkg(1,nk)), xkg(2,nk)-nint(xkg(2,nk)), xkg(3,nk)-nint(xkg(3,nk)), equiv(nk)

@@ -24,7 +24,7 @@ SUBROUTINE setup_nscf ( newgrid, xq, elph_mat )
   !
   USE kinds,              ONLY : DP
   USE parameters,         ONLY : npk
-  USE io_global,          ONLY : stdout
+  USE io_global,          ONLY : stdout, ionode
   USE constants,          ONLY : pi, degspin
   USE cell_base,          ONLY : at, bg
   USE ions_base,          ONLY : nat, tau, ityp, zv
@@ -47,6 +47,7 @@ SUBROUTINE setup_nscf ( newgrid, xq, elph_mat )
   USE ktetra,             ONLY : tetra, tetra_type, opt_tetra_init
   USE lr_symm_base, ONLY : nsymq, invsymq, minus_q
   USE control_lr,   ONLY : lgamma
+
   !
   IMPLICIT NONE
   !
@@ -104,6 +105,9 @@ SUBROUTINE setup_nscf ( newgrid, xq, elph_mat )
      ! In the case of electron-phonon matrix element with wannier functions 
      ! (and possibly in other cases as well) the k-points should not be reduced
      !
+     IF ( ionode ) THEN
+      write(*,*), "electron irreducible k-point check"
+     END IF
      skip_equivalence = elph_mat
      CALL kpoint_grid ( nrot, time_reversal, skip_equivalence, s, t_rev, &
                       bg, nk1*nk2*nk3, k1,k2,k3, nk1,nk2,nk3, nkstot, xk, wk)

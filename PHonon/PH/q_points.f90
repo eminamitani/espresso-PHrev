@@ -37,6 +37,10 @@ SUBROUTINE q_points ( )
 
   nqmax= nq1 * nq2 * nq3
 
+  IF ( ionode ) THEN
+    write(*,*), "phonon irreducible q-point check"
+  END IF
+
   allocate (w_q(nqmax))
   allocate (xq(3,nqmax))
   if(lshift_q) then
